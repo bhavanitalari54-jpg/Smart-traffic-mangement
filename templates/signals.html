@@ -1,0 +1,163 @@
+{% extends "base.html" %}
+{% block title %}Signal Management – Smart Traffic System{% endblock %}
+{% block page_title %}Traffic Signal Management{% endblock %}
+{% block page_subtitle %}Advisory signal timings based on real-time density analysis{% endblock %}
+
+{% block content %}
+
+<!-- ── Advisory Notice ─────────────────────────────────────────────────── -->
+<div class="disclaimer-box" style="margin-bottom:24px;">
+  🚦
+  <div>
+    <strong>Advisory Notice:</strong>
+    Signal timing recommendations below are generated algorithmically from live vehicle density data.
+    These are <strong>advisory only</strong> and are NOT connected to physical traffic signal hardware.
+    Any changes to actual signal timings must be authorised by the relevant road authority.
+  </div>
+</div>
+
+<!-- ── Signal Timing Reference ────────────────────────────────────────── -->
+<div class="glass-card" style="margin-bottom:24px;">
+  <div class="card-header">
+    <h3>📋 Timing Formula Reference</h3>
+  </div>
+  <div class="card-body">
+    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:16px;">
+      {% for level, timing in signal_timings.items() %}
+      <div style="background:var(--bg-dark);border:1px solid var(--border);border-radius:var(--radius-sm);padding:18px;text-align:center;">
+        <div style="font-size:1.5rem;margin-bottom:8px;">
+          {{ '🟢' if level=='LOW' else ('🟡' if level=='MEDIUM' else '🔴') }}
+        </div>
+        <div style="font-weight:700;margin-bottom:10px;
+                    color:{{ '#00c853' if level=='LOW' else ('#ffd600' if level=='MEDIUM' else '#f44336') }}">
+          {{ level }} Density
+        </div>
+        <div style="font-size:.8rem;color:var(--text-muted);margin-bottom:4px;">
+          ≤ {{ '5' if level=='LOW' else ('15' if level=='MEDIUM' else '15+') }} vehicles
+        </div>
+        <div class="signal-timings-row" style="margin-top:10px;">
+          <span class="signal-pill green">G: {{ timing.green }}s</span>
+          <span class="signal-pill yellow">Y: {{ timing.yellow }}s</span>
+          <span class="signal-pill red">R: {{ timing.red }}s</span>
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+</div>
+
+<!-- ── Live Signal Cards ───────────────────────────────────────────────── -->
+<h2 class="section-title">📍 Current Recommendations</h2>
+<div class="grid-3">
+{% for cam in cameras %}
+  {% set s = stats.get(cam.id, {}) %}
+  {% set density = s.get('density', 'LOW') %}
+  {% set signal = s.get('signal', signal_timings['LOW']) %}
+  {% set total = s.get('total', 0) %}
+
+  <div class="glass-card accent-glow fade-in" style="animation-delay:{{ loop.index * 0.07 }}s">
+    <div class="card-header">
+      <h3 style="font-size:.88rem;">📷 {{ cam.name }}</h3>
+      <span class="density-badge {{ density }}">{{ density }}</span>
+    </div>
+    <div class="card-body" style="text-align:center;">
+
+      <!-- Animated signal light -->
+      <div class="signal-ring {{ density }}" style="margin-bottom:10px;" id="sig-ring-{{ cam.id }}">
+        {{ '🟢' if density=='LOW' else ('🟡' if density=='MEDIUM' else '🔴') }}
+      </div>
+
+      <div style="font-weight:700;font-size:1.05rem;margin-bottom:4px;">
+        {{ density }} Traffic
+      </div>
+      <div style="font-size:.8rem;color:var(--text-muted);margin-bottom:14px;">
+        {{ total }} vehicles detected
+      </div>
+
+      <!-- Signal timing pills -->
+      <div class="signal-timings-row">
+        <span class="signal-pill green" id="sig-{{ cam.id }}-green">🟢 {{ signal.green }}s</span>
+        <span class="signal-pill yellow" id="sig-{{ cam.id }}-yellow">🟡 {{ signal.yellow }}s</span>
+        <span class="signal-pill red" id="sig-{{ cam.id }}-red">🔴 {{ signal.red }}s</span>
+      </div>
+
+      <!-- Progress bar -->
+      <div class="progress-bar-wrap" style="margin:14px 0 8px;">
+        <div class="progress-bar-fill {{ 'green' if density=='LOW' else ('yellow' if density=='MEDIUM' else 'red') }}"
+             id="sig-bar-{{ cam.id }}"
+             style="width:{{ [total*3.3,100]|min }}%"></div>
+      </div>
+
+      <div style="display:flex;justify-content:space-between;font-size:.72rem;color:var(--text-muted);">
+        <span>🛣️ {{ cam.road }}</span>
+        <span>Cycle: {{ signal.green + signal.yellow + signal.red }}s</span>
+      </div>
+
+      <!-- Manual override toggle (demo) -->
+      <div style="margin-top:16px;padding-top:14px;border-top:1px solid var(--border);">
+        <label class="toggle-switch" style="justify-content:center;">
+          <input type="checkbox" id="override-{{ cam.id }}"
+                 onchange="toggleOverride('{{ cam.id }}', this.checked)">
+          <span class="toggle-track"></span>
+          <span style="font-size:.8rem;color:var(--text-muted);">Manual Override</span>
+        </label>
+        <div id="override-panel-{{ cam.id }}" style="display:none;margin-top:12px;text-align:left;">
+          <div style="font-size:.72rem;color:var(--yellow);margin-bottom:8px;">
+            ⚠️ Demo only — not connected to hardware
+          </div>
+          <div style="display:flex;gap:8px;">
+            <input type="number" min="5" max="120" value="{{ signal.green }}"
+                   class="form-control" style="width:60px;text-align:center;font-size:.8rem;padding:4px;"
+                   placeholder="G"/>
+            <input type="number" min="3" max="30"  value="{{ signal.yellow }}"
+                   class="form-control" style="width:60px;text-align:center;font-size:.8rem;padding:4px;"
+                   placeholder="Y"/>
+            <input type="number" min="5" max="120" value="{{ signal.red }}"
+                   class="form-control" style="width:60px;text-align:center;font-size:.8rem;padding:4px;"
+                   placeholder="R"/>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+{% endfor %}
+</div>
+
+<script>
+// ── Real-time signal updates via SocketIO ────────────────────────────────────
+if (typeof socket !== 'undefined') {
+  socket.on('stats_update', (data) => {
+    const cid = data.camera_id;
+    const density = data.density || 'LOW';
+    const signal  = data.signal  || { green: 30, yellow: 5, red: 25 };
+    const total   = data.total   || 0;
+
+    const ring = document.getElementById(`sig-ring-${cid}`);
+    if (ring) {
+      ring.className = `signal-ring ${density}`;
+      ring.textContent = density === 'HIGH' ? '🔴' : density === 'MEDIUM' ? '🟡' : '🟢';
+    }
+
+    const g = document.getElementById(`sig-${cid}-green`);
+    const y = document.getElementById(`sig-${cid}-yellow`);
+    const r = document.getElementById(`sig-${cid}-red`);
+    if (g) g.textContent = `🟢 ${signal.green}s`;
+    if (y) y.textContent = `🟡 ${signal.yellow}s`;
+    if (r) r.textContent = `🔴 ${signal.red}s`;
+
+    const bar = document.getElementById(`sig-bar-${cid}`);
+    if (bar) bar.style.width = Math.min(total * 3.3, 100) + '%';
+  });
+}
+
+function toggleOverride(camId, enabled) {
+  const panel = document.getElementById(`override-panel-${camId}`);
+  if (panel) panel.style.display = enabled ? 'block' : 'none';
+  if (enabled) {
+    showToast('⚠️ Manual Override', `Camera ${camId} set to manual (demo mode only)`, 'info');
+  }
+}
+</script>
+
+{% endblock %}

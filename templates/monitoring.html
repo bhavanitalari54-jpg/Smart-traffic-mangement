@@ -1,0 +1,246 @@
+{% extends "base.html" %}
+{% block title %}Live Monitoring – Smart Traffic System{% endblock %}
+{% block page_title %}Live Traffic Monitoring{% endblock %}
+{% block page_subtitle %}Real-time video feed with vehicle detection overlay{% endblock %}
+
+{% block content %}
+
+<div class="grid-2" style="grid-template-columns:2fr 1fr;gap:22px;">
+
+  <!-- ── Left: Video Feed ──────────────────────────────────────────────── -->
+  <div>
+    <!-- Camera selector -->
+    <div class="glass-card" style="padding:16px 20px;margin-bottom:18px;
+                                    display:flex;align-items:center;gap:14px;">
+      <label class="form-label" style="margin:0;white-space:nowrap;">📷 Camera:</label>
+      <select id="camera-select" class="form-control" style="max-width:280px;"
+              onchange="switchCamera(this.value)">
+        {% for cam in cameras %}
+        <option value="{{ cam.id }}" {% if cam.id == active_cam %}selected{% endif %}>
+          {{ cam.name }} — {{ cam.road }}
+        </option>
+        {% endfor %}
+      </select>
+      <div class="live-indicator" style="margin-left:auto;">
+        <div class="live-dot"></div> PROCESSING
+      </div>
+    </div>
+
+    <!-- Video stream -->
+    <div class="video-container" style="margin-bottom:18px;">
+      <img id="video-feed"
+           src="{{ url_for('video_feed', camera_id=active_cam) }}"
+           alt="Live traffic feed"
+           style="width:100%;min-height:400px;object-fit:cover;display:block;"/>
+      <div class="video-overlay">
+        <span class="video-badge live">🔴 LIVE</span>
+        <span class="video-badge info" id="feed-camera-name">
+          {{ cameras | selectattr('id','equalto',active_cam) | map(attribute='name') | first | default('Camera') }}
+        </span>
+      </div>
+    </div>
+
+    <!-- Disclaimer -->
+    <div class="disclaimer-box">
+      ⚠️
+      <div>
+        <strong>Detection Notice:</strong> Vehicle bounding boxes are drawn by YOLOv8n (nano model, COCO classes).
+        Accident events shown are <strong>heuristic-based suspected events only</strong> — not confirmed detections.
+        Signal timings are <strong>advisory recommendations</strong> and are not connected to physical hardware.
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Right: Stats Panel ────────────────────────────────────────────── -->
+  <div style="display:flex;flex-direction:column;gap:16px;">
+
+    <!-- Vehicle Counts -->
+    <div class="glass-card">
+      <div class="card-header">
+        <h3>🚗 Vehicle Counts</h3>
+        <span class="density-badge {{ stats.get(active_cam, {}).get('density', 'LOW') }}" id="current-density">
+          {{ stats.get(active_cam, {}).get('density', 'LOW') }}
+        </span>
+      </div>
+      <div class="card-body">
+        {% set s = stats.get(active_cam, {}) %}
+        {% set counts = s.get('counts', {}) %}
+
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:16px;">
+          {% for vtype, icon in [('car','🚗'),('truck','🚚'),('bus','🚌'),('motorcycle','🏍️')] %}
+          <div style="background:var(--bg-card);border:1px solid var(--border);border-radius:var(--radius-sm);
+                      padding:12px;text-align:center;">
+            <div style="font-size:1.4rem;">{{ icon }}</div>
+            <div style="font-size:1.4rem;font-weight:800;color:var(--text-primary);" id="count-{{ vtype }}">
+              {{ counts.get(vtype, 0) }}
+            </div>
+            <div style="font-size:.7rem;color:var(--text-muted);text-transform:capitalize;">{{ vtype }}</div>
+          </div>
+          {% endfor %}
+        </div>
+
+        <div style="border-top:1px solid var(--border);padding-top:14px;">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+            <span style="color:var(--text-muted);font-size:.82rem;">Total Vehicles</span>
+            <strong style="font-size:1.3rem;color:var(--accent);" id="count-total">{{ s.get('total', 0) }}</strong>
+          </div>
+          <div class="progress-bar-wrap">
+            <div class="progress-bar-fill cyan" id="density-progress"
+                 style="width:{{ [s.get('total',0)*3.3,100]|min }}%"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Signal Recommendation -->
+    <div class="glass-card">
+      <div class="card-header">
+        <h3>🚦 Signal Advisory</h3>
+      </div>
+      <div class="card-body" style="text-align:center;">
+        {% set density = stats.get(active_cam, {}).get('density', 'LOW') %}
+        {% set signal = stats.get(active_cam, {}).get('signal', {'green':30,'yellow':5,'red':25}) %}
+        <div class="signal-ring {{ density }}" id="signal-ring">
+          {{ '🟢' if density=='LOW' else ('🟡' if density=='MEDIUM' else '🔴') }}
+        </div>
+        <div style="font-size:1.1rem;font-weight:700;margin-bottom:6px;" id="signal-density-label">
+          {{ density }} Traffic
+        </div>
+        <div class="signal-timings-row">
+          <span class="signal-pill green" id="sig-green">🟢 {{ signal.green }}s</span>
+          <span class="signal-pill yellow" id="sig-yellow">🟡 {{ signal.yellow }}s</span>
+          <span class="signal-pill red" id="sig-red">🔴 {{ signal.red }}s</span>
+        </div>
+        <p style="font-size:.72rem;color:var(--text-muted);margin-top:12px;">
+          Advisory only — not connected to physical signal hardware
+        </p>
+      </div>
+    </div>
+
+    <!-- Accident Status -->
+    <div class="glass-card" id="accident-status-card">
+      <div class="card-header">
+        <h3>🚨 Accident Monitor</h3>
+      </div>
+      <div class="card-body" style="text-align:center;">
+        <div id="accident-status-icon" style="font-size:2.5rem;margin-bottom:10px;">✅</div>
+        <div id="accident-status-text" style="font-size:.9rem;color:var(--green);font-weight:600;">
+          No events detected
+        </div>
+        <div style="font-size:.72rem;color:var(--text-muted);margin-top:8px;">
+          Monitoring for motion anomalies &amp; vehicle overlap
+        </div>
+      </div>
+    </div>
+
+    <!-- Other Cameras Mini Feeds -->
+    <div class="glass-card">
+      <div class="card-header"><h3>Other Cameras</h3></div>
+      <div class="card-body" style="padding:12px;">
+        {% for cam in cameras %}
+        {% if cam.id != active_cam %}
+        <a href="{{ url_for('monitoring') }}?cam={{ cam.id }}"
+           style="display:flex;align-items:center;gap:10px;padding:8px;
+                  border-radius:var(--radius-sm);transition:background .2s;
+                  text-decoration:none;color:inherit;margin-bottom:4px;"
+           onmouseover="this.style.background='var(--bg-card-hover)'"
+           onmouseout="this.style.background=''">
+          <div style="width:40px;height:30px;background:#111;border-radius:4px;
+                      overflow:hidden;flex-shrink:0;border:1px solid var(--border);">
+            <img src="{{ url_for('video_feed', camera_id=cam.id) }}"
+                 style="width:100%;height:100%;object-fit:cover;"
+                 alt="{{ cam.name }}"/>
+          </div>
+          <div>
+            <div style="font-size:.8rem;font-weight:600;color:var(--text-primary);">{{ cam.name }}</div>
+            <div style="font-size:.7rem;color:var(--text-muted);">{{ cam.road }}</div>
+          </div>
+          <span class="density-badge {{ stats.get(cam.id, {}).get('density', 'LOW') }}"
+                style="margin-left:auto;font-size:.65rem;">
+            {{ stats.get(cam.id, {}).get('density', 'LOW') }}
+          </span>
+        </a>
+        {% endif %}
+        {% endfor %}
+      </div>
+    </div>
+
+  </div><!-- /right panel -->
+</div>
+
+<script>
+// ── Camera switch ───────────────────────────────────────────────────────────
+function switchCamera(camId) {
+  const feed = document.getElementById('video-feed');
+  feed.src = `/video_feed/${camId}`;
+  const nameEl = document.getElementById('feed-camera-name');
+  // Update badge text
+  const sel = document.getElementById('camera-select');
+  const opt = sel.options[sel.selectedIndex];
+  if (nameEl && opt) nameEl.textContent = opt.text.split(' — ')[0];
+  history.replaceState(null, '', `?cam=${camId}`);
+}
+
+// ── Real-time stats for active camera ───────────────────────────────────────
+const activeCam = '{{ active_cam }}';
+
+if (typeof socket !== 'undefined') {
+  socket.on('stats_update', (data) => {
+    if (data.camera_id !== activeCam) return;
+
+    // Total
+    const tot = document.getElementById('count-total');
+    if (tot) tot.textContent = data.total || 0;
+
+    // Per-type counts
+    const types = ['car', 'truck', 'bus', 'motorcycle'];
+    types.forEach(t => {
+      const el = document.getElementById(`count-${t}`);
+      if (el) el.textContent = (data.counts && data.counts[t]) || 0;
+    });
+
+    // Density badge
+    const densEl = document.getElementById('current-density');
+    if (densEl) { densEl.className = `density-badge ${data.density}`; densEl.textContent = data.density; }
+
+    // Progress bar
+    const prog = document.getElementById('density-progress');
+    if (prog) prog.style.width = Math.min((data.total || 0) * 3.3, 100) + '%';
+
+    // Signal ring + pills
+    const ring = document.getElementById('signal-ring');
+    const lbl  = document.getElementById('signal-density-label');
+    if (ring) { ring.className = `signal-ring ${data.density}`; ring.textContent = data.density === 'HIGH' ? '🔴' : data.density === 'MEDIUM' ? '🟡' : '🟢'; }
+    if (lbl)  lbl.textContent = `${data.density} Traffic`;
+    if (data.signal) {
+      const g = document.getElementById('sig-green');
+      const y = document.getElementById('sig-yellow');
+      const r = document.getElementById('sig-red');
+      if (g) g.textContent = `🟢 ${data.signal.green}s`;
+      if (y) y.textContent = `🟡 ${data.signal.yellow}s`;
+      if (r) r.textContent = `🔴 ${data.signal.red}s`;
+    }
+  });
+
+  socket.on('accident_alert', (alert) => {
+    if (alert.camera_id !== activeCam) return;
+    const icon = document.getElementById('accident-status-icon');
+    const text = document.getElementById('accident-status-text');
+    const card = document.getElementById('accident-status-card');
+    if (icon) icon.textContent = '🚨';
+    if (text) {
+      text.style.color = 'var(--red)';
+      text.textContent = `Suspected event! Conf: ${alert.confidence_pct}%`;
+    }
+    if (card) card.style.borderColor = 'rgba(244,67,54,.4)';
+    // Reset after 8s
+    setTimeout(() => {
+      if (icon) icon.textContent = '✅';
+      if (text) { text.style.color = 'var(--green)'; text.textContent = 'No events detected'; }
+      if (card) card.style.borderColor = '';
+    }, 8000);
+  });
+}
+</script>
+
+{% endblock %}

@@ -1,0 +1,187 @@
+{% extends "base.html" %}
+{% block title %}Settings – Smart Traffic System{% endblock %}
+{% block page_title %}Settings{% endblock %}
+{% block page_subtitle %}System configuration and camera management{% endblock %}
+
+{% block content %}
+
+<div class="grid-2" style="gap:22px;">
+
+  <!-- ── Left Column ──────────────────────────────────────────────────── -->
+  <div style="display:flex;flex-direction:column;gap:20px;">
+
+    <!-- Detection Thresholds -->
+    <div class="glass-card">
+      <div class="card-header">
+        <h3>🎛️ Detection Thresholds</h3>
+        <span style="font-size:.72rem;color:var(--text-muted);">Edit config.py to persist changes</span>
+      </div>
+      <div class="card-body">
+
+        <div class="form-group">
+          <label class="form-label">YOLO Confidence Threshold</label>
+          <div style="display:flex;align-items:center;gap:12px;">
+            <input type="range" min="20" max="90" value="{{ (config.YOLO_CONFIDENCE * 100) | int }}"
+                   id="yolo-conf" oninput="document.getElementById('yolo-conf-val').textContent=this.value+'%'"/>
+            <span id="yolo-conf-val" style="font-family:'JetBrains Mono',monospace;font-size:.85rem;
+                                              color:var(--accent);width:42px;text-align:right;">
+              {{ (config.YOLO_CONFIDENCE * 100) | int }}%
+            </span>
+          </div>
+          <small style="color:var(--text-muted);font-size:.72rem;">
+            Higher = fewer but more certain detections. Currently: <code>YOLO_CONFIDENCE = {{ config.YOLO_CONFIDENCE }}</code>
+          </small>
+        </div>
+
+        <div class="form-group">
+          <label class="form-label">Density – Low Threshold (vehicles)</label>
+          <div style="display:flex;align-items:center;gap:12px;">
+            <input type="range" min="1" max="20" value="{{ config.DENSITY_LOW_MAX }}"
+                   id="den-low" oninput="document.getElementById('den-low-val').textContent=this.value"/>
+            <span id="den-low-val" style="font-family:'JetBrains Mono',monospace;font-size:.85rem;
+                                           color:var(--green);width:30px;">{{ config.DENSITY_LOW_MAX }}</span>
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label class="form-label">Density – Medium Threshold (vehicles)</label>
+          <div style="display:flex;align-items:center;gap:12px;">
+            <input type="range" min="5" max="40" value="{{ config.DENSITY_MEDIUM_MAX }}"
+                   id="den-med" oninput="document.getElementById('den-med-val').textContent=this.value"/>
+            <span id="den-med-val" style="font-family:'JetBrains Mono',monospace;font-size:.85rem;
+                                           color:var(--yellow);width:30px;">{{ config.DENSITY_MEDIUM_MAX }}</span>
+          </div>
+        </div>
+
+        <div class="form-group" style="margin-bottom:0;">
+          <label class="form-label">Accident Detection Cooldown (seconds)</label>
+          <div style="display:flex;align-items:center;gap:12px;">
+            <input type="range" min="2" max="30" value="{{ config.ACCIDENT_CONFIDENCE_COOLDOWN | int }}"
+                   id="acc-cool" oninput="document.getElementById('acc-cool-val').textContent=this.value+'s'"/>
+            <span id="acc-cool-val" style="font-family:'JetBrains Mono',monospace;font-size:.85rem;
+                                           color:var(--accent);width:40px;">{{ config.ACCIDENT_CONFIDENCE_COOLDOWN | int }}s</span>
+          </div>
+        </div>
+
+        <div style="margin-top:18px;">
+          <button class="btn btn-muted" onclick="showToast('ℹ️ Settings','Changes shown here are demo-only. Edit config.py to persist.','info')">
+            💾 Save (Demo)
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Notification Contacts -->
+    <div class="glass-card">
+      <div class="card-header">
+        <h3>🔔 Emergency Contacts</h3>
+      </div>
+      <div class="card-body">
+        <div class="form-group">
+          <label class="form-label">Primary Contact</label>
+          <input type="text" class="form-control" value="Traffic Control Centre" placeholder="Name"/>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Phone Number</label>
+          <input type="tel" class="form-control" value="+91 100" placeholder="+91 XXXXX"/>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Email</label>
+          <input type="email" class="form-control" value="trafficops@example.gov" placeholder="email@domain.com"/>
+        </div>
+        <div class="form-group" style="margin-bottom:0;">
+          <label class="toggle-switch">
+            <input type="checkbox" checked>
+            <span class="toggle-track"></span>
+            <span style="font-size:.85rem;color:var(--text-secondary);">
+              Send email alert on confirmed accident
+            </span>
+          </label>
+        </div>
+      </div>
+    </div>
+
+  </div><!-- /left column -->
+
+  <!-- ── Right Column ─────────────────────────────────────────────────── -->
+  <div style="display:flex;flex-direction:column;gap:20px;">
+
+    <!-- Camera List -->
+    <div class="glass-card">
+      <div class="card-header">
+        <h3>📷 Camera Configuration</h3>
+      </div>
+      <div class="card-body" style="padding:0;">
+        {% for cam in cameras %}
+        <div style="padding:16px 20px;border-bottom:1px solid var(--border);
+                    {% if loop.last %}border-bottom:none;{% endif %}">
+          <div style="display:flex;align-items:center;gap:12px;margin-bottom:10px;">
+            <div style="width:8px;height:8px;border-radius:50%;background:var(--green);
+                        box-shadow:0 0 6px rgba(0,200,83,.5);flex-shrink:0;"></div>
+            <strong style="flex:1;">{{ cam.name }}</strong>
+            <span style="font-size:.72rem;color:var(--text-muted);">{{ cam.id }}</span>
+          </div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
+            <div>
+              <div class="form-label" style="margin-bottom:2px;">Source</div>
+              <div style="font-size:.75rem;font-family:'JetBrains Mono',monospace;
+                          color:var(--accent);word-break:break-all;">
+                {{ cam.source | truncate(40, true, '…') }}
+              </div>
+            </div>
+            <div>
+              <div class="form-label" style="margin-bottom:2px;">GPS</div>
+              <div style="font-size:.75rem;font-family:'JetBrains Mono',monospace;color:var(--text-secondary);">
+                {{ '%.4f' | format(cam.lat) }}, {{ '%.4f' | format(cam.lng) }}
+              </div>
+            </div>
+          </div>
+          <div style="margin-top:8px;font-size:.78rem;color:var(--text-muted);">
+            🛣️ {{ cam.road }}
+          </div>
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+
+    <!-- System Info -->
+    <div class="glass-card">
+      <div class="card-header">
+        <h3>ℹ️ System Information</h3>
+      </div>
+      <div class="card-body">
+        <div style="display:flex;flex-direction:column;gap:10px;">
+          {% for label, value in [
+            ('YOLO Model',           config.YOLO_MODEL),
+            ('Firebase',             'Enabled' if config.FIREBASE_ENABLED else 'Mock mode (no credentials)'),
+            ('Google Maps',          'Configured' if config.GOOGLE_MAPS_API_KEY != 'YOUR_GOOGLE_MAPS_API_KEY' else 'Not configured'),
+            ('Process Every N Frames', config.PROCESS_EVERY_N_FRAMES | string),
+            ('Stream FPS',           config.STREAM_FPS | string),
+            ('Cameras',              cameras | length | string),
+          ] %}
+          <div style="display:flex;justify-content:space-between;align-items:center;
+                      padding-bottom:8px;border-bottom:1px solid var(--border);">
+            <span style="font-size:.82rem;color:var(--text-muted);">{{ label }}</span>
+            <code style="font-size:.8rem;color:var(--accent);">{{ value }}</code>
+          </div>
+          {% endfor %}
+        </div>
+      </div>
+    </div>
+
+    <!-- Quick Links -->
+    <div class="glass-card">
+      <div class="card-header"><h3>🔗 Quick Links</h3></div>
+      <div class="card-body" style="display:flex;flex-direction:column;gap:8px;">
+        <a href="{{ url_for('dashboard') }}" class="btn btn-outline">📊 Dashboard</a>
+        <a href="{{ url_for('monitoring') }}" class="btn btn-outline">📷 Live Monitoring</a>
+        <a href="{{ url_for('accidents') }}" class="btn btn-outline">🚨 Accident Alerts</a>
+        <a href="{{ url_for('history') }}"   class="btn btn-outline">📋 History & Reports</a>
+        <button class="btn btn-red btn-sm" onclick="logoutUser()">⏻ Logout</button>
+      </div>
+    </div>
+
+  </div><!-- /right column -->
+</div>
+
+{% endblock %}

@@ -1,0 +1,25 @@
+# Smart Traffic Management & Accident Detection System
+# Requirements File
+
+# Web Framework
+Flask==2.3.3
+Flask-SocketIO==5.3.6
+Flask-Session==0.5.0
+Werkzeug==2.3.7
+eventlet==0.33.3
+
+# Computer Vision & ML
+opencv-python==4.8.1.78
+ultralytics==8.0.196
+numpy==1.24.4
+Pillow==10.0.1
+
+# Firebase
+firebase-admin==6.2.0
+
+# Utilities
+python-dotenv==1.0.0
+requests==2.31.0
+
+# Data
+pandas==2.1.1

@@ -1,0 +1,160 @@
+{% extends "base.html" %}
+{% block title %}Accident Alerts – Smart Traffic System{% endblock %}
+{% block page_title %}Accident Alerts{% endblock %}
+{% block page_subtitle %}Review and manage suspected accident events{% endblock %}
+
+{% block content %}
+
+<!-- ── Summary bar ─────────────────────────────────────────────────────── -->
+<div class="stat-cards-grid" style="grid-template-columns:repeat(3,1fr);margin-bottom:24px;">
+  {% set pending   = alerts | selectattr('status','equalto','pending')   | list | length %}
+  {% set confirmed = alerts | selectattr('status','equalto','confirmed') | list | length %}
+  {% set dismissed = alerts | selectattr('status','equalto','dismissed') | list | length %}
+
+  <div class="stat-card" style="animation-delay:.05s">
+    <div class="stat-icon yellow">⏳</div>
+    <div class="stat-value">{{ pending }}</div>
+    <div class="stat-label">Pending Review</div>
+  </div>
+  <div class="stat-card" style="animation-delay:.1s">
+    <div class="stat-icon red">🚨</div>
+    <div class="stat-value">{{ confirmed }}</div>
+    <div class="stat-label">Confirmed Accidents</div>
+  </div>
+  <div class="stat-card" style="animation-delay:.15s">
+    <div class="stat-icon cyan">🔕</div>
+    <div class="stat-value">{{ dismissed }}</div>
+    <div class="stat-label">Dismissed / False Alarms</div>
+  </div>
+</div>
+
+<!-- ── Disclaimer ──────────────────────────────────────────────────────── -->
+<div class="disclaimer-box" style="margin-bottom:24px;">
+  ⚠️
+  <div>
+    <strong>Automated Detection Disclaimer:</strong>
+    All events below are <strong>suspected accidents</strong> flagged by heuristic computer-vision algorithms
+    (frame-difference motion analysis, bounding-box overlap, and stationary-vehicle detection).
+    These are <em>NOT</em> confirmed accidents. Human operator review is mandatory before initiating any
+    emergency response. False positives are expected. The confidence score is a heuristic indicator only.
+  </div>
+</div>
+
+<!-- ── Filter buttons ─────────────────────────────────────────────────── -->
+<div style="display:flex;align-items:center;gap:10px;margin-bottom:20px;flex-wrap:wrap;">
+  <span style="font-size:.82rem;color:var(--text-muted);margin-right:4px;">Filter:</span>
+  <button class="btn btn-accent btn-sm filter-btn" data-filter="">All ({{ alerts | length }})</button>
+  <button class="btn btn-outline btn-sm filter-btn" data-filter="pending">
+    Pending ({{ pending }})
+  </button>
+  <button class="btn btn-outline btn-sm filter-btn" data-filter="confirmed">
+    Confirmed ({{ confirmed }})
+  </button>
+  <button class="btn btn-outline btn-sm filter-btn" data-filter="dismissed">
+    Dismissed ({{ dismissed }})
+  </button>
+  <div style="margin-left:auto;">
+    <button class="btn btn-muted btn-sm" onclick="exportCSV()">⬇ Export CSV</button>
+  </div>
+</div>
+
+<!-- ── Alert list ──────────────────────────────────────────────────────── -->
+<div id="alert-list">
+  {% if alerts %}
+    {% for alert in alerts %}
+    <div class="alert-card {{ alert.status }} fade-in" id="alert-card-{{ alert.id }}"
+         style="animation-delay:{{ loop.index * 0.04 }}s">
+
+      <div class="alert-header">
+        <div style="display:flex;align-items:center;gap:12px;">
+          <span class="alert-id">#{{ alert.id }}</span>
+          <span style="font-size:.8rem;color:var(--text-muted);">
+            📷 {{ alert.camera_name }}
+          </span>
+        </div>
+        <div style="display:flex;align-items:center;gap:10px;">
+          <span class="alert-status-badge {{ alert.status }}">{{ alert.status }}</span>
+        </div>
+      </div>
+
+      <div class="alert-body">
+        <!-- Metadata row -->
+        <div style="display:flex;flex-wrap:wrap;gap:14px;margin-bottom:12px;">
+          <div class="alert-meta" style="margin:0;">
+            🛣️ <strong>{{ alert.road }}</strong>
+          </div>
+          <div class="alert-meta" style="margin:0;">
+            🕐 <strong>{{ alert.timestamp_str }}</strong>
+          </div>
+          <div class="alert-meta" style="margin:0;">
+            ⚡ Trigger: <strong>{{ alert.trigger }}</strong>
+          </div>
+          <div class="alert-meta" style="margin:0;">
+            Confidence:
+            <strong style="color:{{ '#f44336' if alert.confidence >= 0.7 else ('#ffd600' if alert.confidence >= 0.4 else '#aaa') }}">
+              {{ alert.confidence_pct }}%
+            </strong>
+          </div>
+          {% if alert.acknowledged_by %}
+          <div class="alert-meta" style="margin:0;">
+            👤 Reviewed by: <strong>{{ alert.acknowledged_by }}</strong>
+          </div>
+          {% endif %}
+        </div>
+
+        <!-- Snapshot -->
+        {% if alert.snapshot %}
+        <img src="data:image/jpeg;base64,{{ alert.snapshot }}"
+             class="alert-snapshot"
+             alt="Accident snapshot for alert {{ alert.id }}"
+             onclick="viewSnapshot('{{ alert.id }}')"
+             style="cursor:pointer;"
+             title="Click to enlarge"/>
+        {% else %}
+        <div style="height:100px;background:var(--bg-dark);border-radius:var(--radius-sm);
+                    display:flex;align-items:center;justify-content:center;
+                    color:var(--text-muted);font-size:.82rem;margin-bottom:10px;
+                    border:1px dashed var(--border);">
+          📷 No snapshot available
+        </div>
+        {% endif %}
+
+        <!-- Map link -->
+        <div style="margin-bottom:10px;">
+          <a href="{{ url_for('map_page') }}" class="btn btn-outline btn-sm">
+            🗺️ View on Map
+          </a>
+          {% if alert.snapshot %}
+          <button class="btn btn-muted btn-sm" onclick="viewSnapshot('{{ alert.id }}')">
+            🔍 Enlarge Snapshot
+          </button>
+          {% endif %}
+        </div>
+
+        <!-- Action buttons (only for pending) -->
+        {% if alert.status == 'pending' %}
+        <div class="alert-actions">
+          <button class="btn btn-red btn-sm"
+                  onclick="confirmAlert('{{ alert.id }}')">
+            🚨 Confirm Accident
+          </button>
+          <button class="btn btn-muted btn-sm"
+                  onclick="dismissAlert('{{ alert.id }}')">
+            ✖ Dismiss (False Alarm)
+          </button>
+        </div>
+        {% endif %}
+
+      </div>
+    </div>
+    {% endfor %}
+  {% else %}
+    <div class="empty-state" id="no-alerts">
+      <div class="empty-icon">✅</div>
+      <h3 style="color:var(--green);margin-bottom:8px;">All clear!</h3>
+      <p>No accident events have been detected yet.<br/>
+         The system is actively monitoring all camera feeds.</p>
+    </div>
+  {% endif %}
+</div>
+{% endblock %}

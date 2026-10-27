@@ -1,0 +1,147 @@
+{% extends "base.html" %}
+{% block title %}History & Reports – Smart Traffic System{% endblock %}
+{% block page_title %}History & Reports{% endblock %}
+{% block page_subtitle %}Complete log of traffic events and accident alerts{% endblock %}
+
+{% block content %}
+
+<!-- ── Summary Stats ───────────────────────────────────────────────────── -->
+<div class="stat-cards-grid" style="grid-template-columns:repeat(4,1fr);margin-bottom:24px;">
+  {% set total_alerts    = alerts | length %}
+  {% set confirmed_count = alerts | selectattr('status','equalto','confirmed') | list | length %}
+  {% set dismissed_count = alerts | selectattr('status','equalto','dismissed') | list | length %}
+  {% set pending_cnt     = alerts | selectattr('status','equalto','pending')   | list | length %}
+
+  <div class="stat-card">
+    <div class="stat-icon cyan">📊</div>
+    <div class="stat-value">{{ total_alerts }}</div>
+    <div class="stat-label">Total Records</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-icon yellow">⏳</div>
+    <div class="stat-value">{{ pending_cnt }}</div>
+    <div class="stat-label">Pending</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-icon red">🚨</div>
+    <div class="stat-value">{{ confirmed_count }}</div>
+    <div class="stat-label">Confirmed</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-icon cyan">✅</div>
+    <div class="stat-value">{{ dismissed_count }}</div>
+    <div class="stat-label">Dismissed</div>
+  </div>
+</div>
+
+<!-- ── Alert history chart ─────────────────────────────────────────────── -->
+<div class="glass-card" style="margin-bottom:24px;">
+  <div class="card-header">
+    <h3>📈 Alert Activity</h3>
+    <span style="font-size:.75rem;color:var(--text-muted);">All records</span>
+  </div>
+  <div class="card-body" style="height:200px;">
+    <canvas id="alertHistoryChart"></canvas>
+  </div>
+</div>
+
+<!-- ── Table controls ──────────────────────────────────────────────────── -->
+<div class="glass-card">
+  <div class="card-header">
+    <h3>📋 Accident Alert Records</h3>
+    <div style="display:flex;gap:10px;align-items:center;">
+      <input type="text" id="table-search" class="form-control" placeholder="Search…"
+             style="width:180px;" oninput="filterTable(this.value)"/>
+      <select id="status-filter" class="form-control" style="width:130px;"
+              onchange="filterTable(document.getElementById('table-search').value)">
+        <option value="">All Status</option>
+        <option value="pending">Pending</option>
+        <option value="confirmed">Confirmed</option>
+        <option value="dismissed">Dismissed</option>
+      </select>
+      <button class="btn btn-muted btn-sm" onclick="exportCSV()">⬇ CSV</button>
+    </div>
+  </div>
+  <div class="card-body" style="padding:0;overflow-x:auto;">
+    {% if alerts %}
+    <table class="data-table" id="history-table">
+      <thead>
+        <tr>
+          <th>ID</th>
+          <th>Camera</th>
+          <th>Road</th>
+          <th>Trigger</th>
+          <th>Confidence</th>
+          <th>Timestamp</th>
+          <th>Status</th>
+          <th>Reviewed By</th>
+          <th>Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for alert in alerts %}
+        <tr class="table-row" data-status="{{ alert.status }}"
+            data-search="{{ alert.id }} {{ alert.camera_name }} {{ alert.road }} {{ alert.trigger }} {{ alert.timestamp_str }}">
+          <td><code>#{{ alert.id }}</code></td>
+          <td><strong>{{ alert.camera_name }}</strong></td>
+          <td>{{ alert.road }}</td>
+          <td>
+            <span style="font-size:.78rem;background:var(--bg-dark);
+                         border-radius:4px;padding:2px 8px;border:1px solid var(--border);">
+              {{ alert.trigger }}
+            </span>
+          </td>
+          <td>
+            <span style="color:{{ '#f44336' if alert.confidence >= 0.7 else ('#ffd600' if alert.confidence >= 0.4 else '#aaa') }};
+                         font-weight:600;">
+              {{ alert.confidence_pct }}%
+            </span>
+          </td>
+          <td style="white-space:nowrap;">{{ alert.timestamp_str }}</td>
+          <td><span class="alert-status-badge {{ alert.status }}">{{ alert.status }}</span></td>
+          <td>{{ alert.acknowledged_by or '—' }}</td>
+          <td>
+            <div style="display:flex;gap:6px;">
+              {% if alert.snapshot %}
+              <button class="btn btn-muted btn-sm" onclick="viewSnapshot('{{ alert.id }}')">🔍</button>
+              {% endif %}
+              <a href="{{ url_for('accidents') }}#alert-card-{{ alert.id }}"
+                 class="btn btn-outline btn-sm">→ Review</a>
+            </div>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    <div class="empty-state">
+      <div class="empty-icon">📋</div>
+      <p>No records yet. Records appear here as the system detects events.</p>
+    </div>
+    {% endif %}
+  </div>
+</div>
+
+<script>
+// ── Table filtering ──────────────────────────────────────────────────────────
+function filterTable(search) {
+  const statusFilter = document.getElementById('status-filter').value.toLowerCase();
+  const term = search.toLowerCase();
+  document.querySelectorAll('.table-row').forEach(row => {
+    const statusMatch = !statusFilter || row.dataset.status === statusFilter;
+    const searchMatch = !term || row.dataset.search.toLowerCase().includes(term);
+    row.style.display = (statusMatch && searchMatch) ? '' : 'none';
+  });
+}
+
+// ── Alert history chart data ─────────────────────────────────────────────────
+window.ALERT_HISTORY_DATA = (function() {
+  const alerts = {{ alerts | tojson }};
+  const cams   = {{ cameras | map(attribute='name') | list | tojson }};
+  const pending   = cams.map(n => alerts.filter(a => a.camera_name === n && a.status === 'pending').length);
+  const confirmed = cams.map(n => alerts.filter(a => a.camera_name === n && a.status === 'confirmed').length);
+  return { labels: cams, pending, confirmed };
+})();
+</script>
+
+{% endblock %}

@@ -1,0 +1,78 @@
+{% extends "base.html" %}
+{% block title %}Interactive Map – Smart Traffic System{% endblock %}
+{% block page_title %}Interactive Map{% endblock %}
+{% block page_subtitle %}Camera locations and accident markers on live map{% endblock %}
+
+{% block extra_css %}
+<style>
+  .page-body { padding: 16px 28px 0; display: flex; flex-direction: column; height: calc(100vh - 64px); }
+  #map-container { flex: 1; min-height: 500px; border-radius: var(--radius-md); overflow: hidden; border: 1px solid var(--border); }
+  .map-legend { display: flex; gap: 20px; align-items: center; padding: 12px 0; flex-wrap: wrap; }
+  .legend-item { display: flex; align-items: center; gap: 6px; font-size: .8rem; color: var(--text-secondary); }
+  .legend-dot { width: 12px; height: 12px; border-radius: 50%; }
+</style>
+{% endblock %}
+
+{% block content %}
+
+<!-- Legend bar -->
+<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;flex-wrap:wrap;gap:10px;">
+  <div class="map-legend">
+    <div class="legend-item">
+      <div class="legend-dot" style="background:#00c853;box-shadow:0 0 6px rgba(0,200,83,.5);"></div>
+      Low density camera
+    </div>
+    <div class="legend-item">
+      <div class="legend-dot" style="background:#ffd600;box-shadow:0 0 6px rgba(255,214,0,.5);"></div>
+      Medium density camera
+    </div>
+    <div class="legend-item">
+      <div class="legend-dot" style="background:#f44336;box-shadow:0 0 6px rgba(244,67,54,.5);"></div>
+      High density / accident
+    </div>
+    <div class="legend-item">
+      <div class="legend-dot" style="background:#ffd600;border-radius:2px;"></div>
+      Suspected accident (pending)
+    </div>
+  </div>
+  <div style="display:flex;gap:10px;">
+    <a href="{{ url_for('accidents') }}" class="btn btn-outline btn-sm">🚨 View Alerts ({{ alerts|length }})</a>
+    <a href="{{ url_for('monitoring') }}" class="btn btn-muted btn-sm">📷 Live Feed</a>
+  </div>
+</div>
+
+<!-- Map container -->
+<div id="map-container"></div>
+
+<!-- Camera + Alert data injection -->
+<script>
+  window.MAPS_KEY = '{{ maps_key }}';
+  window.CAMERA_DATA = {{ cameras | tojson }};
+  window.ALERT_DATA  = [
+    {% for a in alerts %}
+    {
+      id: "{{ a.id }}",
+      camera_id: "{{ a.camera_id }}",
+      camera_name: "{{ a.camera_name }}",
+      road: "{{ a.road }}",
+      status: "{{ a.status }}",
+      confidence_pct: {{ a.confidence_pct }},
+      timestamp_str: "{{ a.timestamp_str }}",
+      lat: {{ a.lat }},
+      lng: {{ a.lng }}
+    }{{ ',' if not loop.last }}
+    {% endfor %}
+  ];
+</script>
+
+<!-- Map JS -->
+<script src="{{ url_for('static', filename='js/map.js') }}"></script>
+
+{% if maps_key and maps_key != 'YOUR_GOOGLE_MAPS_API_KEY' %}
+<!-- Load Google Maps only if key is configured -->
+<script async defer
+  src="https://maps.googleapis.com/maps/api/js?key={{ maps_key }}&callback=initMap">
+</script>
+{% endif %}
+
+{% endblock %}

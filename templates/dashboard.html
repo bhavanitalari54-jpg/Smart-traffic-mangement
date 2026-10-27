@@ -1,0 +1,191 @@
+{% extends "base.html" %}
+{% block title %}Dashboard – Smart Traffic System{% endblock %}
+{% block page_title %}Dashboard{% endblock %}
+{% block page_subtitle %}Real-time traffic overview across all cameras{% endblock %}
+
+{% block content %}
+
+<!-- ── Stat Cards ──────────────────────────────────────────────────────── -->
+<div class="stat-cards-grid">
+
+  <div class="stat-card fade-in" style="animation-delay:.05s">
+    <div class="stat-icon cyan">🚗</div>
+    <div class="stat-value" id="stat-total-vehicles">
+      {{ stats.values() | sum(attribute='total') | default(0) }}
+    </div>
+    <div class="stat-label">Total Vehicles Detected</div>
+    <div class="stat-delta">Across {{ cameras | length }} active cameras</div>
+  </div>
+
+  <div class="stat-card fade-in" style="animation-delay:.1s">
+    <div class="stat-icon
+      {% set max_density = 'LOW' %}
+      {% for s in stats.values() %}
+        {% if s.density == 'HIGH' %}{% set max_density = 'HIGH' %}{% endif %}
+      {% endfor %}
+      {{ 'red' if max_density=='HIGH' else ('yellow' if max_density=='MEDIUM' else 'green') }}">
+      🚦
+    </div>
+    <div class="stat-value" id="stat-density"
+         style="font-size:1.5rem;color:{{ '#f44336' if max_density=='HIGH' else ('#ffd600' if max_density=='MEDIUM' else '#00c853') }}">
+      {{ max_density }}
+    </div>
+    <div class="stat-label">Peak Traffic Density</div>
+    <div class="stat-delta">Across all monitored roads</div>
+  </div>
+
+  <div class="stat-card fade-in" style="animation-delay:.15s">
+    <div class="stat-icon red">🚨</div>
+    <div class="stat-value">{{ pending_count }}</div>
+    <div class="stat-label">Pending Alerts</div>
+    <div class="stat-delta">
+      <a href="{{ url_for('accidents') }}" style="color:var(--accent);">Review alerts →</a>
+    </div>
+  </div>
+
+  <div class="stat-card fade-in" style="animation-delay:.2s">
+    <div class="stat-icon purple">📷</div>
+    <div class="stat-value">{{ cameras | length }}</div>
+    <div class="stat-label">Active Cameras</div>
+    <div class="stat-delta">All feeds processing</div>
+  </div>
+
+</div>
+
+<!-- ── Charts Row ──────────────────────────────────────────────────────── -->
+<div class="grid-2" style="margin-bottom:24px;">
+
+  <!-- Vehicle count over time -->
+  <div class="glass-card fade-in" style="animation-delay:.25s">
+    <div class="card-header">
+      <h3>
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2">
+          <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>
+        </svg>
+        Vehicle Count — Live
+      </h3>
+      <span style="font-size:.75rem;color:var(--text-muted);">rolling 30s</span>
+    </div>
+    <div class="card-body" style="height:220px;">
+      <canvas id="vehicleChart"></canvas>
+    </div>
+  </div>
+
+  <!-- Density donut -->
+  <div class="glass-card fade-in" style="animation-delay:.3s">
+    <div class="card-header">
+      <h3>
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2">
+          <circle cx="12" cy="12" r="10"/><path d="M12 8v4l3 3"/>
+        </svg>
+        Density Distribution
+      </h3>
+    </div>
+    <div class="card-body" style="height:220px;">
+      <canvas id="densityChart"></canvas>
+    </div>
+  </div>
+
+</div>
+
+<!-- ── Road-wise + Alerts Row ─────────────────────────────────────────── -->
+<div class="grid-2" style="margin-bottom:24px;">
+
+  <!-- Road-wise bar chart -->
+  <div class="glass-card fade-in" style="animation-delay:.35s">
+    <div class="card-header">
+      <h3>🛣️ Road-Wise Vehicles</h3>
+    </div>
+    <div class="card-body" style="height:220px;">
+      <canvas id="roadChart"></canvas>
+    </div>
+  </div>
+
+  <!-- Recent Alerts Panel -->
+  <div class="glass-card fade-in" style="animation-delay:.4s">
+    <div class="card-header">
+      <h3>🚨 Recent Alerts</h3>
+      <a href="{{ url_for('accidents') }}" class="btn btn-outline btn-sm">View All</a>
+    </div>
+    <div class="card-body" style="padding:0;max-height:260px;overflow-y:auto;">
+      {% if alerts %}
+        {% for alert in alerts %}
+        <div style="display:flex;align-items:center;gap:14px;
+                    padding:12px 20px;border-bottom:1px solid var(--border);">
+          <div style="width:36px;height:36px;border-radius:50%;flex-shrink:0;
+                      background:{{ 'rgba(244,67,54,.15)' if alert.status=='confirmed' else 'rgba(255,214,0,.15)' }};
+                      display:flex;align-items:center;justify-content:center;">
+            {{ '🔴' if alert.status=='confirmed' else '🟡' }}
+          </div>
+          <div style="flex:1;min-width:0;">
+            <div style="font-size:.82rem;font-weight:600;color:var(--text-primary);">
+              #{{ alert.id }} — {{ alert.camera_name }}
+            </div>
+            <div style="font-size:.75rem;color:var(--text-muted);">
+              {{ alert.timestamp_str }} | Conf: {{ alert.confidence_pct }}%
+            </div>
+          </div>
+          <span class="alert-status-badge {{ alert.status }}">{{ alert.status }}</span>
+        </div>
+        {% endfor %}
+      {% else %}
+        <div class="empty-state" style="padding:30px 20px;">
+          <div class="empty-icon">✅</div>
+          <p>No recent alerts — all clear!</p>
+        </div>
+      {% endif %}
+    </div>
+  </div>
+
+</div>
+
+<!-- ── Camera Status Cards ─────────────────────────────────────────────── -->
+<h2 class="section-title">📷 Camera Status</h2>
+<div class="grid-3">
+{% for cam in cameras %}
+  {% set s = stats.get(cam.id, {}) %}
+  {% set density = s.get('density', 'LOW') %}
+  <div class="glass-card accent-glow fade-in" style="animation-delay:{{ loop.index * 0.05 + 0.4 }}s">
+    <div class="card-header">
+      <h3 style="font-size:.88rem;">📷 {{ cam.name }}</h3>
+      <span class="density-badge {{ density }}">{{ density }}</span>
+    </div>
+    <div class="card-body">
+      <div style="display:flex;justify-content:space-between;margin-bottom:14px;">
+        <div>
+          <div style="font-size:1.8rem;font-weight:800;color:var(--text-primary);">
+            {{ s.get('total', 0) }}
+          </div>
+          <div style="font-size:.75rem;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em;">vehicles</div>
+        </div>
+        <div style="text-align:right;">
+          {% set signal = s.get('signal', {'green':30,'yellow':5,'red':25}) %}
+          <div class="signal-timings-row" style="justify-content:flex-end;">
+            <span class="signal-pill green">G: {{ signal.green }}s</span>
+            <span class="signal-pill yellow">Y: {{ signal.yellow }}s</span>
+            <span class="signal-pill red">R: {{ signal.red }}s</span>
+          </div>
+          <div style="font-size:.7rem;color:var(--text-muted);margin-top:6px;">Advisory only</div>
+        </div>
+      </div>
+      <div class="progress-bar-wrap">
+        <div class="progress-bar-fill {{ 'green' if density=='LOW' else ('yellow' if density=='MEDIUM' else 'red') }}"
+             style="width: {{ [s.get('total', 0) * 3.3, 100] | min }}%"></div>
+      </div>
+      <div style="display:flex;justify-content:space-between;margin-top:6px;font-size:.72rem;color:var(--text-muted);">
+        <span>🛣️ {{ cam.road }}</span>
+        <a href="{{ url_for('monitoring') }}?cam={{ cam.id }}" style="color:var(--accent);">View feed →</a>
+      </div>
+    </div>
+  </div>
+{% endfor %}
+</div>
+
+<!-- Chart data injection -->
+<script>
+  window.CAMERA_NAMES = {{ cameras | map(attribute='name') | list | tojson }};
+  window.CAMERA_INITIAL_COUNTS = [
+    {% for cam in cameras %}{{ stats.get(cam.id, {}).get('total', 0) }}{{ ',' if not loop.last }}{% endfor %}
+  ];
+</script>
+{% endblock %}
